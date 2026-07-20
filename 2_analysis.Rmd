@@ -1,0 +1,100 @@
+---
+title: "Analysis"
+author: "Arielle Smith with Claude assistance"
+date: "2026-07-20"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED SSI Delphi Study")
+setwd("/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED SSI Delphi Study")
+```
+
+Phase 2 Round 1 analysis rules
+- Rule 1 = Advance to Round 3: All four panels individually >= 80% Endorsed (aka rated as Very Important or Essential)
+- Rule 2 = Reassess/re-rate in Round 2: NOT already Endorsed, AND all four panels individually >= 70% Endorsed aka Rule 2a OR any one panel >= 80% Endorsed aka Rule 2b
+- Rule 3 = Dropped: Neither above condition met
+
+Expert group labels:
+1=A researcher focused on eating disorders; 
+2=A clinician who treats people with eating disorders; 
+3=A carer or supporter of someone with an eating disorder;
+4=A person with lived experience of an eating disorder
+
+Bridge item importance labels: 
+1=Not sure/don’t know
+2=Not important
+3=Slightly important
+4=Moderately important
+5=Very important
+6=Essential
+
+```{r phase 2 round 1 calculations}
+#Part 1: Calculate % endorsement ("very important" = 5 or "essential" = 6) for each item, within each of the 4 expert groups individually 
+bridgeidea_pct_endorsed <- phase2_round1 %>%
+  group_by(aim2r1_expert_group) %>% 
+  summarise(across(
+    c(contains("aim2r1_prvntion_"),  
+      contains("aim2r1_ident_"),
+      contains("aim2r1_ir_"),
+      contains("aim2r1_treatmnt_"),
+      contains("aim2r1_psorsrpt_")),
+    # for each item column, calculate % of responses that were "5" or "6"
+    # na.rm = TRUE excludes true missing/blank cells from the denominator;
+    # an explicit "1" (not sure/don't know) is counted as non-endorsed
+    ~ mean(.x %in% c("5", "6"), na.rm = TRUE) * 100
+  ))
+
+#Part 2: For each bridge idea, find the min/max % across the 4 expert groups (to be used in Part 3) and make a logical variable indicating if every expert group individually rated a bridge idea >= 70% 
+bridgeidea_decision_wide <- bridgeidea_pct_endorsed %>%
+  select(-aim2r1_expert_group) %>%
+  summarise(across(
+    everything(),
+    list(
+      min_pct  = ~min(.x, na.rm = TRUE),        # lowest group % Endorsed  (for Rule 1)
+      max_pct  = ~max(.x, na.rm = TRUE),         # highest group % Endorsed (for Rule 2b)
+      all_70   = ~all(.x >= 70, na.rm = TRUE)    # TRUE if every group is >= 70% Endorsed (for Rule 2a)
+    ),
+    .names = "{.col}__{.fn}" #syntax to create new column names (purposefully uses double underscore for later use as a separator)
+  ))
+
+bridgeidea_decision_tidy <- bridgeidea_decision_wide %>%
+  pivot_longer(everything(), names_to = c("item_id", ".value"), names_sep = "__") %>%
+  mutate(
+    round1_decision = case_when(
+      min_pct >= 80          ~ "Endorsed_R3",   # Rule 1 met, advance to Round 3
+      all_70 | max_pct >= 80 ~ "Reassess_R2",    # Rule 2a met OR
+                                                  # Rule 2b met, reassess in Round 2
+      TRUE                   ~ "Dropped"         # Rule 3 met, drop bridge idea
+    )
+  )
+
+#Part 4 (exploratory): Identify which expert group(s) met Rule 2b for given bridge idea
+
+# reshape bridgeidea_pct_endorsed to long format: one row per item x expert group
+bridgeidea_pct_long <- bridgeidea_pct_endorsed %>%
+  pivot_longer(-aim2r1_expert_group, names_to = "item_id", values_to = "pct")
+
+# for each item, list which group(s) hit >= 80%
+groups_rule2b <- bridgeidea_pct_long %>%
+  filter(pct >= 80) %>%
+  group_by(item_id) %>%
+  summarise(groups_meeting_rule2b = paste(aim2r1_expert_group, collapse = ", "))
+
+# join into the existing decision table, then blank out rows that aren't Reassess_R2 (because Rule 2b is only relevant for this decision)
+bridgeidea_decision_tidy <- bridgeidea_decision_tidy %>%
+  left_join(groups_rule2b, by = "item_id") %>%
+  mutate(groups_meeting_rule2b = if_else(round1_decision == "Reassess_R2",
+                                          groups_meeting_rule2b,
+                                          NA_character_))
+```
+
+I am concerned that keeping the pre-registered rule I have for Round 2 (moving on to Round 3 if 80% of all four panels individually rated as Very Important or Essential) will not lead to enough differentiation (too many items will fall in the grey area of 70-79% Endorsed). 
+
+```{r exploratoration for round 2 analysis decision making}
+ round2_test_min_pct <- bridgeidea_decision_tidy %>%
+     filter(round1_decision == "Reassess_R2") %>%  # look at the pool that will be rerated in Round 2
+    arrange(desc(min_pct)) %>%
+    select(item_id, min_pct) # look at the lowest group % Endorsed (since this has to be above whatever threshold I set)
+#Conclusion: 70% or 75% seems like a good cutoff point if Round 2 data mirrors Round 1 data for the bridge ideas that will be re-rated. It is also possible though that the original 80% threshold ends up being ok because after participants have seen group feedback, some additional convergence is expected. 
+```
