@@ -1,7 +1,7 @@
 ---
 title: "Data Cleaning"
 author: "Arielle Smith with Claude assistance"
-date: "2026-07-20"
+date: "2026-08-17"
 output: html_document
 ---
 
@@ -14,19 +14,43 @@ library(tidyverse)
 knitr::opts_knit$set(root.dir = "/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED SSI Delphi Study")
 setwd("/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED SSI Delphi Study")
 
-phase2_round1 <- read_csv("Data/phase2_round1.csv", col_types = cols(.default = "c")) #data exported with values (not labels) and all variables assigned character class for later conversion to correct class
+#Data exported with values (not labels) and all variables assigned character class for later conversion to correct class; first two rows with item labeling manually removed prior to import
+
+phase2_round1_withduplicate <- read_csv("Data/phase2_round1_withduplicate.csv", col_types = cols(.default = "c")) 
+
+phase2_round1_deduplicated <- read_csv("Data/phase2_round1_deduplicated.csv", col_types = cols(.default = "c"))
+
+phase2_round2 <- read_csv("Data/phase2_round2.csv", col_types = cols(.default = "c"))
 ```
 
 ```{r initial cleaning}
-#Delete first two rows (item labeling)
-phase2_round1 <- phase2_round1[-c(1,2), ]
 
-#NOTE: Will merge datasets here (will need to create a variable to identify phase 1 vs phase 2 participants)
+#Add aim2r1_expert_group column to Phase 2 Round 2 data (will need to do the same for Round 3)
+phase2_round2 <- phase2_round2 %>%
+  left_join(
+    phase2_round1_deduplicated %>%
+      select(Participant_ID, aim2r1_expert_group),
+    by = "Participant_ID"
+  )
+
+#Probably no need to merge Phase 1 and Phase 2 data (demographics should be reported seperately)
+
+#For demographics, use phase2_round1_deduplicated (this is the main demographics to report in-text divided by participant group and overall; probably report phase 1 demographics seperately in a supplement)
 ```
 
 ```{r transforming data}
 #Create categorical variables
-phase2_round1 <- phase2_round1 %>%
+phase2_round1_withduplicate <- phase2_round1_withduplicate %>%
+  mutate(across(
+    c(contains("aim2r1_expert_group"),
+      contains("aim2r1_prvntion_"),
+      contains("aim2r1_ident_"),
+      contains("aim2r1_ir_"),
+      contains("aim2r1_treatmnt_"),
+      contains("aim2r1_psorsrpt_")),
+    as.factor))
+
+phase2_round1_deduplicated <- phase2_round1_deduplicated %>%
   mutate(across(
     c(contains("aim2r1_expert_group"),
       contains("aim2r1_prvntion_"),

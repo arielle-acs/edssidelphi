@@ -1,7 +1,7 @@
 ---
 title: "Analysis"
 author: "Arielle Smith with Claude assistance"
-date: "2026-07-20"
+date: "2026-08-17"
 output: html_document
 ---
 
@@ -10,10 +10,12 @@ knitr::opts_knit$set(root.dir = "/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED
 setwd("/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED SSI Delphi Study")
 ```
 
-Phase 2 Round 1 analysis rules
+Phase 2 Round 1 analysis rules:
 - Rule 1 = Advance to Round 3: All four panels individually >= 80% Endorsed (aka rated as Very Important or Essential)
 - Rule 2 = Reassess/re-rate in Round 2: NOT already Endorsed, AND all four panels individually >= 70% Endorsed aka Rule 2a OR any one panel >= 80% Endorsed aka Rule 2b
 - Rule 3 = Dropped: Neither above condition met
+
+For Phase 2 Round 2, Rule 1 stays the same (unless the 80% threshold is lowered per a priori pre-registration amendment), and everything else is Dropped.
 
 Expert group labels:
 1=A researcher focused on eating disorders; 
@@ -29,9 +31,11 @@ Bridge item importance labels:
 5=Very important
 6=Essential
 
+Important note: Discovered during Round 2 that 70458 and 41737 is the same caregiver invited to the study twice. Ultimately dropped 41737 Round 1 data because 70458 Round 1 data was received first. For Rounds 2 and 3, only 70458 data will be collected. The main implication is that the items included to be re-rerated in Round 2 are different when 41737 is dropped (41737 was still included at the time the Round 2 survey was constructed). First, will present the calculations done with 41737 included because that is what was used to construct Round 2. Then will present the calculations done with 41737 dropped, for transparency.
+
 ```{r phase 2 round 1 calculations}
 #Part 1: Calculate % endorsement ("very important" = 5 or "essential" = 6) for each item, within each of the 4 expert groups individually 
-bridgeidea_pct_endorsed <- phase2_round1 %>%
+bridgeidea_pct_endorsed_r1_withduplicate <- phase2_round1_withduplicate %>%
   group_by(aim2r1_expert_group) %>% 
   summarise(across(
     c(contains("aim2r1_prvntion_"),  
@@ -46,7 +50,7 @@ bridgeidea_pct_endorsed <- phase2_round1 %>%
   ))
 
 #Part 2: For each bridge idea, find the min/max % across the 4 expert groups (to be used in Part 3) and make a logical variable indicating if every expert group individually rated a bridge idea >= 70% 
-bridgeidea_decision_wide <- bridgeidea_pct_endorsed %>%
+bridgeidea_decision_wide_r1_withduplicate <- bridgeidea_pct_endorsed_r1_withduplicate %>%
   select(-aim2r1_expert_group) %>%
   summarise(across(
     everything(),
@@ -58,7 +62,7 @@ bridgeidea_decision_wide <- bridgeidea_pct_endorsed %>%
     .names = "{.col}__{.fn}" #syntax to create new column names (purposefully uses double underscore for later use as a separator)
   ))
 
-bridgeidea_decision_tidy <- bridgeidea_decision_wide %>%
+bridgeidea_decision_tidy_r1_withduplicate <- bridgeidea_decision_wide_r1_withduplicate %>%
   pivot_longer(everything(), names_to = c("item_id", ".value"), names_sep = "__") %>%
   mutate(
     round1_decision = case_when(
@@ -69,32 +73,157 @@ bridgeidea_decision_tidy <- bridgeidea_decision_wide %>%
     )
   )
 
-#Part 4 (exploratory): Identify which expert group(s) met Rule 2b for given bridge idea
+#Part 3 (exploratory): Identify which expert group(s) met Rule 2b for given bridge idea
 
 # reshape bridgeidea_pct_endorsed to long format: one row per item x expert group
-bridgeidea_pct_long <- bridgeidea_pct_endorsed %>%
+bridgeidea_pct_long_r1_withduplicate <- bridgeidea_pct_endorsed_r1_withduplicate %>%
   pivot_longer(-aim2r1_expert_group, names_to = "item_id", values_to = "pct")
 
 # for each item, list which group(s) hit >= 80%
-groups_rule2b <- bridgeidea_pct_long %>%
+groups_rule2b_r1_withduplicate <- bridgeidea_pct_long_r1_withduplicate %>%
   filter(pct >= 80) %>%
   group_by(item_id) %>%
-  summarise(groups_meeting_rule2b = paste(aim2r1_expert_group, collapse = ", "))
+  summarise(groups_meeting_rule2b_r1_withduplicate = paste(aim2r1_expert_group, collapse = ", "))
 
 # join into the existing decision table, then blank out rows that aren't Reassess_R2 (because Rule 2b is only relevant for this decision)
-bridgeidea_decision_tidy <- bridgeidea_decision_tidy %>%
-  left_join(groups_rule2b, by = "item_id") %>%
-  mutate(groups_meeting_rule2b = if_else(round1_decision == "Reassess_R2",
-                                          groups_meeting_rule2b,
+bridgeidea_decision_tidy_r1_withduplicate <- bridgeidea_decision_tidy_r1_withduplicate %>%
+  left_join(groups_rule2b_r1_withduplicate, by = "item_id") %>%
+  mutate(groups_meeting_rule2b_r1_withduplicate = if_else(round1_decision == "Reassess_R2",
+                                          groups_meeting_rule2b_r1_withduplicate,
                                           NA_character_))
+```
+
+```{r phase 2 round 1 sensitivity analysis given round 1 error}
+#Repeat formation of tidy round 2 decision 
+
+#Part 1: 
+bridgeidea_pct_endorsed_r1_deduplicated <- phase2_round1_deduplicated %>%
+  group_by(aim2r1_expert_group) %>% 
+  summarise(across(
+    c(contains("aim2r1_prvntion_"),  
+      contains("aim2r1_ident_"),
+      contains("aim2r1_ir_"),
+      contains("aim2r1_treatmnt_"),
+      contains("aim2r1_psorsrpt_")),
+    ~ mean(.x %in% c("5", "6"), na.rm = TRUE) * 100
+  ))
+
+#Part 2: 
+bridgeidea_decision_wide_r1_deduplicated <- bridgeidea_pct_endorsed_r1_deduplicated %>%
+  select(-aim2r1_expert_group) %>%
+  summarise(across(
+    everything(),
+    list(
+      min_pct  = ~min(.x, na.rm = TRUE),        
+      max_pct  = ~max(.x, na.rm = TRUE),        
+      all_70   = ~all(.x >= 70, na.rm = TRUE)    
+    ),
+    .names = "{.col}__{.fn}" 
+  ))
+
+bridgeidea_decision_tidy_r1_deduplicated <- bridgeidea_decision_wide_r1_deduplicated %>%
+  pivot_longer(everything(), names_to = c("item_id", ".value"), names_sep = "__") %>%
+  mutate(
+    round1_decision = case_when(
+      min_pct >= 80          ~ "Endorsed_R3",   
+      all_70 | max_pct >= 80 ~ "Reassess_R2",   
+                                                 
+      TRUE                   ~ "Dropped"         
+    )
+  )
+
+#Compare items to be re-assessed in round 2
+withduplicate_items_Reassess_R2 <- bridgeidea_decision_tidy_r1_withduplicate %>%
+  filter(round1_decision == "Reassess_R2") %>%
+  pull(item_id)
+
+deduplicated_items_Reassess_R2 <- bridgeidea_decision_tidy_r1_deduplicated %>%
+  filter(round1_decision == "Reassess_R2") %>%
+  pull(item_id)
+
+##Items in the with-duplicate dataset as Reassess_R2 but NOT the deduplicated dataset
+setdiff(withduplicate_items_Reassess_R2, deduplicated_items_Reassess_R2)
+
+##Items in the deduplicated dataset as Reassess_R2 but NOT the with-duplicate dataset
+setdiff(deduplicated_items_Reassess_R2, withduplicate_items_Reassess_R2)
+
+#Compare items to be moved directly to round 3
+withduplicate_items_Endorsed_R3 <- bridgeidea_decision_tidy_r1_withduplicate %>%
+  filter(round1_decision == "Endorsed_R3") %>%
+  pull(item_id)
+
+deduplicated_items_Endorsed_R3 <- bridgeidea_decision_tidy_r1_deduplicated %>%
+  filter(round1_decision == "Endorsed_R3") %>%
+  pull(item_id)
+
+##Items in the with-duplicate dataset as Endorsed_R3 but NOT the deduplicated dataset
+setdiff(withduplicate_items_Endorsed_R3, deduplicated_items_Endorsed_R3)
+
+##Items in the deduplicated dataset as Endorsed_R3 but NOT the with-duplicate dataset
+setdiff(deduplicated_items_Endorsed_R3, withduplicate_items_Endorsed_R3)
+
+#Compare items to be dropped after round 1
+withduplicate_items_Dropped <- bridgeidea_decision_tidy_r1_withduplicate %>%
+  filter(round1_decision == "Dropped") %>%
+  pull(item_id)
+
+deduplicated_items_Dropped <- bridgeidea_decision_tidy_r1_deduplicated %>%
+  filter(round1_decision == "Dropped") %>%
+  pull(item_id)
+
+##Items in the with-duplicate dataset as Dropped but NOT the deduplicated dataset
+setdiff(withduplicate_items_Dropped, deduplicated_items_Dropped)
+
+##Items in the deduplicated dataset as Dropped but NOT the with-duplicate dataset
+setdiff(deduplicated_items_Dropped, withduplicate_items_Dropped)
+
+#Conclusions: 
+#aim2r1_prvntion_15 and aim2r1_psorsrpt_1 were automatically moved on to round 3 using the with-duplicate dataset (if the deduplicated dataset were to have been used, they would have needed to be rerated in round 2). Going to keep them in round 3 since, because they never got a chance to be rerated, it would be unfair to remove them as contenders. 
+#aim2r1_ident_1, aim2r1_ident_11, aim2r1_ident_14, aim2r1_treatmnt_12, and aim2r1_psorsrpt_2 were included in round 2 using the with-duplicate dataset (if the deduplicated dataset were to have been used, they would have been dropped and not included in round 2). Going to use the round 2 data to decide if they will be included in round 3 (no harm in re-rating beyond participant burden, will get closer to consensus with re-rating).  
 ```
 
 I am concerned that keeping the pre-registered rule I have for Round 2 (moving on to Round 3 if 80% of all four panels individually rated as Very Important or Essential) will not lead to enough differentiation (too many items will fall in the grey area of 70-79% Endorsed). 
 
-```{r exploratoration for round 2 analysis decision making}
- round2_test_min_pct <- bridgeidea_decision_tidy %>%
+```{r phase 2 round 1 exploratoration for phase 2 round 2 analysis decision making}
+ round2_test_min_pct_r1_withduplicate <- bridgeidea_decision_tidy_r1_withduplicate %>%
      filter(round1_decision == "Reassess_R2") %>%  # look at the pool that will be rerated in Round 2
     arrange(desc(min_pct)) %>%
     select(item_id, min_pct) # look at the lowest group % Endorsed (since this has to be above whatever threshold I set)
 #Conclusion: 70% or 75% seems like a good cutoff point if Round 2 data mirrors Round 1 data for the bridge ideas that will be re-rated. It is also possible though that the original 80% threshold ends up being ok because after participants have seen group feedback, some additional convergence is expected. 
+```
+
+```{r phase 2 round 2 calculations}
+#Part 1: 
+bridgeidea_pct_endorsed_r2 <- phase2_round2 %>%
+  group_by(aim2r1_expert_group) %>% 
+  summarise(across(
+    c(contains("aim2r2_prvntion_"),  
+      contains("aim2r2_ident_"),
+      contains("aim2r2_ir_"),
+      contains("aim2r2_treatmnt_"),
+      contains("aim2r2_psorsrpt_")),
+    ~ mean(.x %in% c("5", "6"), na.rm = TRUE) * 100
+  ))
+
+#Part 2: 
+bridgeidea_decision_wide_r2 <- bridgeidea_pct_endorsed_r2 %>%
+  select(-aim2r1_expert_group) %>%
+  summarise(across(
+    everything(),
+    ~min(.x, na.rm = TRUE),
+    .names = "{.col}__min_pct"
+  ))
+
+bridgeidea_decision_tidy_r2 <- bridgeidea_decision_wide_r2 %>%
+  pivot_longer(
+    everything(),
+    names_to = c("item_id", ".value"),
+    names_sep = "__"
+  ) %>%
+  mutate(
+    round2_decision = case_when(
+      min_pct >= 80 ~ "Endorsed_R3",
+      TRUE          ~ "Dropped"
+    )
+  )
 ```
