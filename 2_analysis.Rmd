@@ -214,7 +214,8 @@ bridgeidea_decision_wide_r2 <- bridgeidea_pct_endorsed_r2 %>%
     .names = "{.col}__min_pct"
   ))
 
-bridgeidea_decision_tidy_r2 <- bridgeidea_decision_wide_r2 %>%
+#Original 80% threshold 
+bridgeidea_decision_tidy_r2_80pct <- bridgeidea_decision_wide_r2 %>%
   pivot_longer(
     everything(),
     names_to = c("item_id", ".value"),
@@ -226,4 +227,281 @@ bridgeidea_decision_tidy_r2 <- bridgeidea_decision_wide_r2 %>%
       TRUE          ~ "Dropped"
     )
   )
+#3 new endorsed items, bringing total to 13 (including the 10 from round 1)
+
+#Revised 75% threshold 
+bridgeidea_decision_tidy_r2_75pct <- bridgeidea_decision_wide_r2 %>%
+  pivot_longer(
+    everything(),
+    names_to = c("item_id", ".value"),
+    names_sep = "__"
+  ) %>%
+  mutate(
+    round2_decision = case_when(
+      min_pct >= 75 ~ "Endorsed_R3",
+      TRUE          ~ "Dropped"
+    )
+  )
+#6 new endorsed items, bringing total to 16 (including the 10 from round 1)
+#Will use this to get to minimum of 15
+```
+
+```{r phase 2 round 3 calculations}
+
+#Make an object compiling all of the bridge item point allocation column names
+rated_cols <- c(
+  "aim2r1_prvntion_4", "aim2r1_prvntion_6", "aim2r1_prvntion_11",
+  "aim2r1_prvntion_14", "aim2r1_prvntion_15",
+  "aim2r1_ident_2", "aim2r1_ident_3", "aim2r1_ident_5",
+  "aim2r1_ir_1", "aim2r1_ir_10", "aim2r1_ir_11",
+  "aim2r1_treatmnt_1", "aim2r1_treatmnt_9",
+  "aim2r1_psorsrpt_1", "aim2r1_psorsrpt_7", "aim2r1_psorsrpt_10"
+)
+
+#Add new column with total points sum (by participant) to verify that everyone sums to 100
+phase2_round3 <- phase2_round3 %>%
+  mutate(
+    across(all_of(rated_cols), as.numeric),
+    total_points = rowSums(across(all_of(rated_cols))))
+#Looks good!
+
+#Get mean points allocation for each item (by expert group)
+group_means <- phase2_round3 %>%
+  group_by(aim2r1_expert_group) %>%
+  summarize(across(all_of(rated_cols), mean), .groups = "drop")
+
+#Make an object representing the value if points were distributed to each item equally 
+threshold <- 100 / length(rated_cols)   
+#6.25
+
+#Get mean points allocation for each item, equally weigthed across the four groups
+point_summary <- group_means %>%
+  pivot_longer(-aim2r1_expert_group,
+               names_to = "item", values_to = "group_mean") %>%
+  group_by(item) %>%
+  summarize(weighted_mean = mean(group_mean), .groups = "drop") %>%
+  mutate(priority = weighted_mean > threshold) %>% #Add a new column to show if the weighted mean is above the threshold
+  arrange(desc(weighted_mean)) 
+```
+
+```{r phase 1 demographics}
+#Expert group subsets (1 = researchers, 2 = clinicians, 3 = carers, 4 = lived experience)
+researchers_phase1 <- phase1_step1 %>%
+  filter(aim1s1_expert_group == "1")
+
+clinicians_phase1 <- phase1_step1 %>%
+  filter(aim1s1_expert_group == "2")
+
+carers_phase1 <- phase1_step1 %>%
+  filter(aim1s1_expert_group == "3")
+
+lived_experience_phase1 <- phase1_step1 %>%
+  filter(aim1s1_expert_group == "4")
+
+#Age overall
+phase1_step1 %>%
+  summarise(n = n(),
+            mean = mean(aim1s1_age_exact, na.rm = TRUE),
+            sd = sd(aim1s1_age_exact, na.rm = TRUE),
+            median = median(aim1s1_age_exact, na.rm = TRUE),
+            min = min(aim1s1_age_exact, na.rm = TRUE),
+            max = max(aim1s1_age_exact, na.rm = TRUE))
+
+#Age by expert group
+phase1_step1 %>%
+  group_by(aim1s1_expert_group) %>%
+  summarise(n = n(),
+            mean = mean(aim1s1_age_exact, na.rm = TRUE),
+            sd = sd(aim1s1_age_exact, na.rm = TRUE),
+            median = median(aim1s1_age_exact, na.rm = TRUE),
+            min = min(aim1s1_age_exact, na.rm = TRUE),
+            max = max(aim1s1_age_exact, na.rm = TRUE))
+
+#Race and ethnicity (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase1_step1, "aim1s1_race")
+demo_freq(researchers_phase1, "aim1s1_race")
+demo_freq(clinicians_phase1, "aim1s1_race")
+demo_freq(carers_phase1, "aim1s1_race")
+demo_freq(lived_experience_phase1, "aim1s1_race")
+
+#Gender (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase1_step1, "aim1s1_gender")
+demo_freq(researchers_phase1, "aim1s1_gender")
+demo_freq(clinicians_phase1, "aim1s1_gender")
+demo_freq(carers_phase1, "aim1s1_gender")
+demo_freq(lived_experience_phase1, "aim1s1_gender")
+
+#Sexual orientation (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase1_step1, "aim1s1_sexual_orient")
+demo_freq(researchers_phase1, "aim1s1_sexual_orient")
+demo_freq(clinicians_phase1, "aim1s1_sexual_orient")
+demo_freq(carers_phase1, "aim1s1_sexual_orient")
+demo_freq(lived_experience_phase1, "aim1s1_sexual_orient")
+
+#Education (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase1_step1, "aim1s1_education_lev")
+demo_freq(researchers_phase1, "aim1s1_education_lev")
+demo_freq(clinicians_phase1, "aim1s1_education_lev")
+demo_freq(carers_phase1, "aim1s1_education_lev")
+demo_freq(lived_experience_phase1, "aim1s1_education_lev")
+
+#SSI familiarity and view overall
+phase1_step1 %>%
+  summarise(familiar_mean = mean(aim1s1_ssi_familiar, na.rm = TRUE),
+            familiar_sd = sd(aim1s1_ssi_familiar, na.rm = TRUE),
+            view_mean = mean(aim1s1_ssi_view, na.rm = TRUE),
+            view_sd = sd(aim1s1_ssi_view, na.rm = TRUE))
+
+#SSI familiarity and view by expert group
+phase1_step1 %>%
+  group_by(aim1s1_expert_group) %>%
+  summarise(familiar_mean = mean(aim1s1_ssi_familiar, na.rm = TRUE),
+            familiar_sd = sd(aim1s1_ssi_familiar, na.rm = TRUE),
+            view_mean = mean(aim1s1_ssi_view, na.rm = TRUE),
+            view_sd = sd(aim1s1_ssi_view, na.rm = TRUE))
+
+#Specific for lived experience group
+demo_freq(lived_experience_phase1, "aim1s1_time_strugled")
+demo_freq(lived_experience_phase1, "aim1s1_identify_eds")
+demo_freq(lived_experience_phase1, "aim1s1_ed_sym_length")
+demo_freq(lived_experience_phase1, "aim1s1_ed_dx_age")
+demo_freq(lived_experience_phase1, "aim1s1_ed_dx_place")
+demo_freq(lived_experience_phase1, "aim1s1_ed_care_prov")
+
+#Specific for carers group
+demo_freq(carers_phase1, "aim1s1_ED_patnt_rel")
+demo_freq(carers_phase1, "aim1s1_ED_trmt_invol")
+demo_freq(carers_phase1, "aim1s1_ED_trmt_role")
+demo_freq(carers_phase1, "aim1s1_ED_sym_time")
+demo_freq(carers_phase1, "aim1s1_ED_type")
+demo_freq(carers_phase1, "aim1s1_lo_ED_dx_plc")
+
+#Specific for clinicians group
+demo_freq(clinicians_phase1, "aim1s1_cln_job_span")
+demo_freq(clinicians_phase1, "aim1s1_job_tim_on_ED")
+demo_freq(clinicians_phase1, "aim1s1_role_title")
+demo_freq(clinicians_phase1, "aim1s1_workplace")
+demo_freq(clinicians_phase1, "aim1s1_group_focus_c")
+demo_freq(clinicians_phase1, "aim1s1_job_ed_type")
+demo_freq(clinicians_phase1, "aim1s1_job_clients")
+
+#Specific for researchers group
+demo_freq(researchers_phase1, "aim1s1_res_car_lengt")
+demo_freq(researchers_phase1, "aim1s1_amt_on_ed_res")
+demo_freq(researchers_phase1, "aim1s1_research_role")
+demo_freq(researchers_phase1, "aim1s1_res_workplace")
+demo_freq(researchers_phase1, "aim1s1_group_focus_r")
+demo_freq(researchers_phase1, "aim1s1_res_ed_type")
+demo_freq(researchers_phase1, "aim1s1_ed_res_topics")
+```
+
+```{r phase 2 demographics}
+#Expert group subsets (1 = researchers, 2 = clinicians, 3 = carers, 4 = lived experience)
+researchers_phase2 <- phase2_round1_deduplicated %>%
+  filter(aim2r1_expert_group == "1")
+
+clinicians_phase2 <- phase2_round1_deduplicated %>%
+  filter(aim2r1_expert_group == "2")
+
+carers_phase2 <- phase2_round1_deduplicated %>%
+  filter(aim2r1_expert_group == "3")
+
+lived_experience_phase2 <- phase2_round1_deduplicated %>%
+  filter(aim2r1_expert_group == "4")
+
+#Age overall
+phase2_round1_deduplicated %>%
+  summarise(n = n(),
+            mean = mean(aim2r1_age_exact, na.rm = TRUE),
+            sd = sd(aim2r1_age_exact, na.rm = TRUE),
+            median = median(aim2r1_age_exact, na.rm = TRUE),
+            min = min(aim2r1_age_exact, na.rm = TRUE),
+            max = max(aim2r1_age_exact, na.rm = TRUE))
+
+#Age by expert group
+phase2_round1_deduplicated %>%
+  group_by(aim2r1_expert_group) %>%
+  summarise(n = n(),
+            mean = mean(aim2r1_age_exact, na.rm = TRUE),
+            sd = sd(aim2r1_age_exact, na.rm = TRUE),
+            median = median(aim2r1_age_exact, na.rm = TRUE),
+            min = min(aim2r1_age_exact, na.rm = TRUE),
+            max = max(aim2r1_age_exact, na.rm = TRUE))
+
+#Race and ethnicity (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase2_round1_deduplicated, "aim2r1_race")
+demo_freq(researchers_phase2, "aim2r1_race")
+demo_freq(clinicians_phase2, "aim2r1_race")
+demo_freq(carers_phase2, "aim2r1_race")
+demo_freq(lived_experience_phase2, "aim2r1_race")
+
+#Gender (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase2_round1_deduplicated, "aim2r1_gender")
+demo_freq(researchers_phase2, "aim2r1_gender")
+demo_freq(clinicians_phase2, "aim2r1_gender")
+demo_freq(carers_phase2, "aim2r1_gender")
+demo_freq(lived_experience_phase2, "aim2r1_gender")
+
+#Sexual orientation (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase2_round1_deduplicated, "aim2r1_sexual_orient")
+demo_freq(researchers_phase2, "aim2r1_sexual_orient")
+demo_freq(clinicians_phase2, "aim2r1_sexual_orient")
+demo_freq(carers_phase2, "aim2r1_sexual_orient")
+demo_freq(lived_experience_phase2, "aim2r1_sexual_orient")
+
+#Education (overall, researchers, clinicians, carers, lived experience)
+demo_freq(phase2_round1_deduplicated, "aim2r1_education_lev")
+demo_freq(researchers_phase2, "aim2r1_education_lev")
+demo_freq(clinicians_phase2, "aim2r1_education_lev")
+demo_freq(carers_phase2, "aim2r1_education_lev")
+demo_freq(lived_experience_phase2, "aim2r1_education_lev")
+
+#SSI familiarity and view overall
+phase2_round1_deduplicated %>%
+  summarise(familiar_mean = mean(aim2r1_ssi_familiar, na.rm = TRUE),
+            familiar_sd = sd(aim2r1_ssi_familiar, na.rm = TRUE),
+            view_mean = mean(aim2r1_ssi_view, na.rm = TRUE),
+            view_sd = sd(aim2r1_ssi_view, na.rm = TRUE))
+
+#SSI familiarity and view by expert group
+phase2_round1_deduplicated %>%
+  group_by(aim2r1_expert_group) %>%
+  summarise(familiar_mean = mean(aim2r1_ssi_familiar, na.rm = TRUE),
+            familiar_sd = sd(aim2r1_ssi_familiar, na.rm = TRUE),
+            view_mean = mean(aim2r1_ssi_view, na.rm = TRUE),
+            view_sd = sd(aim2r1_ssi_view, na.rm = TRUE))
+
+#Specific for lived experience group
+demo_freq(lived_experience_phase2, "aim2r1_time_strugled")
+demo_freq(lived_experience_phase2, "aim2r1_identify_eds")
+demo_freq(lived_experience_phase2, "aim2r1_ed_sym_length")
+demo_freq(lived_experience_phase2, "aim2r1_ed_dx_age")
+demo_freq(lived_experience_phase2, "aim2r1_ed_dx_place")
+demo_freq(lived_experience_phase2, "aim2r1_ed_care_prov")
+
+#Specific for carers group
+demo_freq(carers_phase2, "aim2r1_ED_patnt_rel")
+demo_freq(carers_phase2, "aim2r1_ED_trmt_invol")
+demo_freq(carers_phase2, "aim2r1_ED_trmt_role")
+demo_freq(carers_phase2, "aim2r1_ED_sym_time")
+demo_freq(carers_phase2, "aim2r1_ED_type")
+demo_freq(carers_phase2, "aim2r1_lo_ED_dx_plc")
+
+#Specific for clinicians group
+demo_freq(clinicians_phase2, "aim2r1_cln_job_span")
+demo_freq(clinicians_phase2, "aim2r1_job_tim_on_ED")
+demo_freq(clinicians_phase2, "aim2r1_role_title")
+demo_freq(clinicians_phase2, "aim2r1_workplace")
+demo_freq(clinicians_phase2, "aim2r1_group_focus_c")
+demo_freq(clinicians_phase2, "aim2r1_job_ed_type")
+demo_freq(clinicians_phase2, "aim2r1_job_clients")
+
+#Specific for researchers group
+demo_freq(researchers_phase2, "aim2r1_res_car_lengt")
+demo_freq(researchers_phase2, "aim2r1_amt_on_ed_res")
+demo_freq(researchers_phase2, "aim2r1_research_role")
+demo_freq(researchers_phase2, "aim2r1_res_workplace")
+demo_freq(researchers_phase2, "aim2r1_group_focus_r")
+demo_freq(researchers_phase2, "aim2r1_res_ed_type")
+demo_freq(researchers_phase2, "aim2r1_ed_res_topics")
 ```
