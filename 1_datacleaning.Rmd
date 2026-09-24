@@ -1,31 +1,66 @@
 ---
 title: "Data Cleaning"
 author: "Arielle Smith with Claude assistance"
-date: "2026-08-17"
+date: "2026-09-24
 output: html_document
 ---
 
 ```{r setup}
 if(!require(readr)){install.packages('readr')}
-library(readr)
+library(readr) 
 if(!require(tidyverse)){install.packages('tidyverse')}
 library(tidyverse) 
 
 knitr::opts_knit$set(root.dir = "/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED SSI Delphi Study")
 setwd("/Volumes/fsmresfiles/MSS/Schleider_Lab/jslab/ED SSI Delphi Study")
 
-#Data exported with values (not labels) and all variables assigned character class for later conversion to correct class; first two rows with item labeling manually removed prior to import
+#Data exported with values (not labels) and all variables assigned character class for later conversion to correct class; first two rows with item labeling manually removed prior to import; identifying information (e.g., emails) removed
+
+phase1_step1 <- read_csv("Data/phase1_step1.csv", col_types = cols(.default = "c")) 
+
+phase1_step2 <- read_csv("Data/phase1_step2.csv", col_types = cols(.default = "c")) 
 
 phase2_round1_withduplicate <- read_csv("Data/phase2_round1_withduplicate.csv", col_types = cols(.default = "c")) 
 
 phase2_round1_deduplicated <- read_csv("Data/phase2_round1_deduplicated.csv", col_types = cols(.default = "c"))
 
 phase2_round2 <- read_csv("Data/phase2_round2.csv", col_types = cols(.default = "c"))
+
+phase2_round3 <- read_csv("Data/phase2_round3.csv", col_types = cols(.default = "c"))
 ```
 
-```{r initial cleaning}
+```{r phase 1 cleaning}
+#Identify demographics variables with multiple select options
+multi_vars_phase1 <- c("aim1s1_race", "aim1s1_gender",                                           
+                "aim1s1_identify_eds", "aim1s1_ed_dx_place", "aim1s1_ed_care_prov",         
+                "aim1s1_ED_type", "aim1s1_lo_ED_dx_plc",                                    
+                "aim1s1_group_focus_c", "aim1s1_job_ed_type",                               
+                "aim1s1_group_focus_r", "aim1s1_res_ed_type", "aim1s1_ed_res_topics")       
 
-#Add aim2r1_expert_group column to Phase 2 Round 2 data (will need to do the same for Round 3)
+#Apply helper function with multiple select variables
+for(v in multi_vars_phase1) {
+  dummies_phase1 <- split_multiselect(phase1_step1, v)
+  phase1_step1 <- phase1_step1 %>%
+    left_join(dummies_phase1, by = "Participant_ID", relationship = "one-to-one")
+}
+
+#Make all necessary variables factors
+phase1_step1 <- phase1_step1 %>%
+  mutate(across(c(aim1s1_age_group, aim1s1_expert_group, aim1s1_sexual_orient, aim1s1_education_lev,
+                  aim1s1_time_strugled, aim1s1_ed_sym_length, aim1s1_ed_dx_age,
+                  aim1s1_ED_patnt_rel, aim1s1_ED_trmt_invol, aim1s1_ED_trmt_role, aim1s1_ED_sym_time,
+                  aim1s1_cln_job_span, aim1s1_job_tim_on_ED, aim1s1_role_title, aim1s1_workplace, aim1s1_job_clients,
+                  aim1s1_res_car_lengt, aim1s1_amt_on_ed_res, aim1s1_research_role, aim1s1_res_workplace),
+                as.factor))
+
+#Make all necessary variables numeric
+phase1_step1 <- phase1_step1 %>%
+  mutate(across(c(aim1s1_age_exact, aim1s1_ssi_familiar, aim1s1_ssi_view),
+                as.numeric))
+```
+
+```{r phase 2 cleaning}
+#Add aim2r1_expert_group column to Phase 2 Round 2 data 
 phase2_round2 <- phase2_round2 %>%
   left_join(
     phase2_round1_deduplicated %>%
@@ -33,13 +68,36 @@ phase2_round2 <- phase2_round2 %>%
     by = "Participant_ID"
   )
 
-#Probably no need to merge Phase 1 and Phase 2 data (demographics should be reported seperately)
+#Add aim2r1_expert_group column to Phase 2 Round 3 data
+phase2_round3 <- phase2_round3 %>%
+  left_join(
+    phase2_round1_deduplicated %>%
+      select(Participant_ID, aim2r1_expert_group),
+    by = "Participant_ID"
+  )
 
-#For demographics, use phase2_round1_deduplicated (this is the main demographics to report in-text divided by participant group and overall; probably report phase 1 demographics seperately in a supplement)
-```
+#Rename Phase 2 Round 3 columns for consistent bridge idea labels 
+phase2_round3 <- phase2_round3 %>%
+  rename(
+    aim2r1_prvntion_4  = points_1,
+    aim2r1_prvntion_6  = points_2,
+    aim2r1_prvntion_11 = points_3,
+    aim2r1_prvntion_14 = points_4,
+    aim2r1_prvntion_15 = points_5,
+    aim2r1_ident_2     = points_6,
+    aim2r1_ident_3     = points_7,
+    aim2r1_ident_5     = points_8,
+    aim2r1_ir_1        = points_9,
+    aim2r1_ir_10       = points_10,
+    aim2r1_ir_11       = points_11,
+    aim2r1_treatmnt_1  = points_12,
+    aim2r1_treatmnt_9  = points_13,
+    aim2r1_psorsrpt_1  = points_14,
+    aim2r1_psorsrpt_7  = points_15,
+    aim2r1_psorsrpt_10 = points_16
+  )
 
-```{r transforming data}
-#Create categorical variables
+#Create categorical variables for the bridge items
 phase2_round1_withduplicate <- phase2_round1_withduplicate %>%
   mutate(across(
     c(contains("aim2r1_expert_group"),
@@ -60,5 +118,31 @@ phase2_round1_deduplicated <- phase2_round1_deduplicated %>%
       contains("aim2r1_psorsrpt_")),
     as.factor))
 
-#NOTE: Worrying about demographics etc later, just focusing now on what needs to be cleaned for narrowing bridge items for rounds 2 and 3
+#Identify demographics variables with multiple select options (same as above)
+multi_vars_phase2 <- c("aim2r1_race", "aim2r1_gender",                                           
+                "aim2r1_identify_eds", "aim2r1_ed_dx_place", "aim2r1_ed_care_prov",         
+                "aim2r1_ED_type", "aim2r1_lo_ED_dx_plc",                                    
+                "aim2r1_group_focus_c", "aim2r1_job_ed_type",                               
+                "aim2r1_group_focus_r", "aim2r1_res_ed_type", "aim2r1_ed_res_topics")       
+
+#Apply helper function with multiple select variables (same as above)
+for(v in multi_vars_phase2) {
+  dummies_phase2 <- split_multiselect(phase2_round1_deduplicated, v)
+  phase2_round1_deduplicated <- phase2_round1_deduplicated %>%
+    left_join(dummies_phase2, by = "Participant_ID", relationship = "one-to-one")
+}
+
+#Make all necessary variables factors
+phase2_round1_deduplicated <- phase2_round1_deduplicated %>%
+  mutate(across(c(aim2r1_age_group, aim2r1_expert_group, aim2r1_sexual_orient, aim2r1_education_lev,
+                  aim2r1_time_strugled, aim2r1_ed_sym_length, aim2r1_ed_dx_age,
+                  aim2r1_ED_patnt_rel, aim2r1_ED_trmt_invol, aim2r1_ED_trmt_role, aim2r1_ED_sym_time,
+                  aim2r1_cln_job_span, aim2r1_job_tim_on_ED, aim2r1_role_title, aim2r1_workplace, aim2r1_job_clients,
+                  aim2r1_res_car_lengt, aim2r1_amt_on_ed_res, aim2r1_research_role, aim2r1_res_workplace),
+                as.factor))
+
+#Make all necessary variables numeric
+phase2_round1_deduplicated <- phase2_round1_deduplicated %>%
+  mutate(across(c(aim2r1_age_exact, aim2r1_ssi_familiar, aim2r1_ssi_view),
+                as.numeric))
 ```
